@@ -21,7 +21,19 @@ const LocationSelector = ({ position, onLocationSelect }) => {
 			onLocationSelect(e.latlng.lat, e.latlng.lng)
 		},
 	})
-	return position ? <Marker position={position} /> : null
+	return position ? (
+		<Marker
+			position={position}
+			draggable={true}
+			eventHandlers={{
+				dragend: (e) => {
+					const marker = e.target
+					const latLng = marker.getLatLng()
+					onLocationSelect(latLng.lat, latLng.lng)
+				}
+			}}
+		/>
+	) : null
 }
 
 const ItineraryBuilder = () => {
@@ -35,6 +47,9 @@ const ItineraryBuilder = () => {
 	const [isSubmitting, setIsSubmitting] = useState(false)
 	const [editingStopId, setEditingStopId] = useState(null)
 	const [isMapMaximized, setIsMapMaximized] = useState(false)
+	const [weatherPreview, setWeatherPreview] = useState([])
+	const [weatherLoading, setWeatherLoading] = useState(false)
+	const [weatherError, setWeatherError] = useState('')
 	const [formData, setFormData] = useState({
 		city_name: '',
 		country: '',
@@ -76,9 +91,114 @@ const ItineraryBuilder = () => {
 		}
 	}
 
+	const buildDateRange = (startDate, endDate) => {
+		const dates = []
+		const start = new Date(startDate)
+		const end = new Date(endDate)
+		if (isNaN(start) || isNaN(end) || end < start) return dates
+
+		const current = new Date(start)
+		let guard = 0
+		while (current <= end && guard < 14) {
+			dates.push(current.toISOString().split('T')[0])
+			current.setDate(current.getDate() + 1)
+			guard += 1
+		}
+		return dates
+	}
+
+	const fetchWeatherPreview = async () => {
+		if (!formData.latitude || !formData.longitude || !formData.arrival_date || !formData.departure_date) {
+			setWeatherPreview([])
+			setWeatherError('')
+			return
+		}
+
+		setWeatherLoading(true)
+		setWeatherError('')
+		try {
+			const token = localStorage.getItem('authToken')
+			const dates = buildDateRange(formData.arrival_date, formData.departure_date)
+			const results = await Promise.all(dates.map(async (date) => {
+				try {
+					const response = await fetch(
+						`http://localhost:8000/api/weather/forecast/?lat=${formData.latitude}&lon=${formData.longitude}&date=${date}`,
+						{ headers: token ? { Authorization: `Bearer ${token}` } : {} }
+					)
+					if (!response.ok) return { date, error: 'Weather unavailable' }
+					const data = await response.json()
+					return { date, ...data }
+				} catch {
+					return { date, error: 'Weather unavailable' }
+				}
+			}))
+			setWeatherPreview(results)
+		} catch (err) {
+			setWeatherError(err.message || 'Could not load weather preview')
+			setWeatherPreview([])
+		} finally {
+			setWeatherLoading(false)
+		}
+	}
+
+	const geocodeCityCountry = async (city, country) => {
+		const query = [city, country].filter(Boolean).join(', ')
+		if (!query) return null
+
+		try {
+			const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`)
+			const data = await response.json()
+			if (data && data.length > 0) {
+				return {
+					latitude: parseFloat(data[0].lat),
+					longitude: parseFloat(data[0].lon)
+				}
+			}
+		} catch (err) {
+			console.error('City geocoding failed', err)
+		}
+		return null
+	}
+
 	useEffect(() => {
 		fetchTrip()
 	}, [id])
+
+	useEffect(() => {
+		if (!isModalOpen) return
+		if (!formData.latitude || !formData.longitude || !formData.arrival_date || !formData.departure_date) {
+			setWeatherPreview([])
+			setWeatherError('')
+			return
+		}
+		const timeout = setTimeout(() => {
+			fetchWeatherPreview()
+		}, 350)
+		return () => clearTimeout(timeout)
+	}, [isModalOpen, formData.latitude, formData.longitude, formData.arrival_date, formData.departure_date])
+
+	useEffect(() => {
+		if (!isModalOpen) return
+		if (!formData.city_name.trim() || !formData.country.trim()) return
+
+		const timeout = setTimeout(async () => {
+			const coords = await geocodeCityCountry(formData.city_name.trim(), formData.country.trim())
+			if (coords) {
+				setFormData(prev => {
+					if (prev.city_name.trim() !== formData.city_name.trim() || prev.country.trim() !== formData.country.trim()) {
+						return prev
+					}
+					return {
+						...prev,
+						latitude: coords.latitude,
+						longitude: coords.longitude
+					}
+				})
+			}
+		}, 600)
+
+		return () => clearTimeout(timeout)
+	}, [isModalOpen, formData.city_name, formData.country])
 
 	// Force leaflet to recalculate size when the container animates
 	useEffect(() => {
@@ -153,6 +273,7 @@ const ItineraryBuilder = () => {
 		} catch (err) {
 			console.error("Geocoding failed", err)
 		}
+		setWeatherPreview([])
 	}
 
 	const openAddModal = () => {
@@ -216,6 +337,38 @@ const ItineraryBuilder = () => {
 				const errorMessage = errorData.error || (typeof errorData === 'object' ? Object.values(errorData).flat().join(', ') : 'Failed to save stop')
 				throw new Error(errorMessage)
 			}
+
+			const savedStop = await response.json().catch(() => null)
+			const weatherLat = savedStop?.latitude ?? payload.latitude
+			const weatherLon = savedStop?.longitude ?? payload.longitude
+			const weatherDate = savedStop?.arrival_date ?? payload.arrival_date
+
+			if (weatherLat != null && weatherLon != null && weatherDate) {
+				try {
+					const weatherResponse = await fetch(
+						`http://localhost:8000/api/weather/forecast/?lat=${weatherLat}&lon=${weatherLon}&date=${weatherDate}`,
+						{
+							headers: { 'Authorization': `Bearer ${token}` }
+						}
+					)
+					if (weatherResponse.ok) {
+						const weatherData = await weatherResponse.json()
+						if (weatherData?.warning) {
+							const warningText = weatherData.warnings?.length > 0
+								? weatherData.warnings.join('; ')
+								: 'Weather may be bad on the selected date.'
+							alert(`Weather warning for ${payload.city_name}: ${warningText}`)
+							} else if (weatherData?.forecast) {
+								alert(
+									`Weather for ${payload.city_name}: ${weatherData.forecast.condition} (${weatherData.forecast.min_temp_c}°C - ${weatherData.forecast.max_temp_c}°C)`
+								)
+						}
+					}
+				} catch (weatherErr) {
+					console.error('Weather lookup failed:', weatherErr)
+				}
+			}
+
 			await fetchTrip() // Refresh trip data
 			setIsModalOpen(false)
 			setEditingStopId(null)
@@ -461,6 +614,37 @@ const ItineraryBuilder = () => {
 										<div>
 											<label className="block text-sm font-medium text-slate-700 mb-1">Departure Time</label>
 											<input type="time" name="departure_time" value={formData.departure_time} onChange={handleInputChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+										</div>
+									</div>
+
+									<div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+										<div className="flex items-center justify-between mb-2">
+											<p className="text-sm font-semibold text-slate-900">Weather for selected days</p>
+											{weatherLoading && <span className="text-xs text-slate-500">Loading...</span>}
+										</div>
+										{weatherError && <p className="text-sm text-red-600">{weatherError}</p>}
+										{!weatherLoading && weatherPreview.length === 0 && !weatherError && (
+											<p className="text-sm text-slate-500">Pick a city, coordinates, and dates to preview the weather.</p>
+										)}
+										<div className="space-y-2">
+											{weatherPreview.map((entry) => (
+												<div key={entry.date} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 border border-slate-200">
+													<div>
+														<p className="text-sm font-medium text-slate-800">{new Date(entry.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+														<p className="text-xs text-slate-500">{entry.forecast?.condition || entry.error || 'Weather unavailable'}</p>
+													</div>
+													<div className="text-right">
+														<p className="text-sm font-semibold text-slate-900">
+															{entry.forecast ? `${entry.forecast.min_temp_c}°C - ${entry.forecast.max_temp_c}°C` : '--'}
+														</p>
+														{entry.warning ? (
+															<p className="text-xs font-semibold text-red-600">Warning: {entry.warnings?.join('; ') || 'Bad weather expected'}</p>
+														) : (
+															<p className="text-xs text-emerald-700">No alert</p>
+														)}
+													</div>
+												</div>
+											))}
 										</div>
 									</div>
 									<div className="grid grid-cols-2 gap-4">

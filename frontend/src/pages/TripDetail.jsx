@@ -64,6 +64,11 @@ const TripDetail = () => {
   const [shareError, setShareError] = useState('')
   const [shareLink, setShareLink] = useState('')
   const [copied, setCopied] = useState(false)
+  const [showFinishModal, setShowFinishModal] = useState(false)
+  const [actualSpending, setActualSpending] = useState('')
+  const [finishLoading, setFinishLoading] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     fetchTripDetail()
@@ -75,9 +80,9 @@ const TripDetail = () => {
       const response = await fetch(`http://localhost:8000/api/trips/${id}/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
+
       if (response.ok) {
         const data = await response.json()
-        
         // Dynamically geocode any stops that are missing coordinates
         if (data.stops && data.stops.length > 0) {
           data.stops = await Promise.all(data.stops.map(async (stop) => {
@@ -90,7 +95,8 @@ const TripDetail = () => {
                   return { 
                     ...stop, 
                     latitude: parseFloat(geocodeData[0].lat), 
-                    longitude: parseFloat(geocodeData[0].lon) 
+                    longitude: parseFloat(geocodeData[0].lon),
+                    weather: null,
                   }
                 }
               } catch (e) {
@@ -100,8 +106,26 @@ const TripDetail = () => {
             return stop
           }))
         }
-
         setTrip(data)
+        // Fetch weather for each stop's arrival_date via backend endpoint
+        if (data.stops && data.stops.length > 0) {
+          const token = localStorage.getItem('authToken')
+          Promise.all(data.stops.map(async (stop) => {
+            if (stop.latitude == null || stop.longitude == null || !stop.arrival_date) return stop
+            try {
+              const wres = await fetch(`http://localhost:8000/api/weather/forecast/?lat=${stop.latitude}&lon=${stop.longitude}&date=${stop.arrival_date}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              })
+              if (!wres.ok) return stop
+              const wdata = await wres.json()
+              return { ...stop, weather: wdata }
+            } catch (e) {
+              return stop
+            }
+          })).then(stopsWithWeather => {
+            setTrip(prev => ({ ...prev, stops: stopsWithWeather }))
+          })
+        }
       } else {
         setError('Trip not found')
       }
@@ -145,6 +169,64 @@ const TripDetail = () => {
       setShareError(shareErr.message || 'Could not create share link')
     } finally {
       setShareLoading(false)
+    }
+  }
+  const handleFinishTrip = async () => {
+    if (!actualSpending || isNaN(parseFloat(actualSpending))) {
+      alert('Please enter a valid spending amount')
+      return
+    }
+
+    setFinishLoading(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`http://localhost:8000/api/trips/${id}/finish_trip/`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ actual_spending: parseFloat(actualSpending) })
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to finish trip')
+      }
+
+      const updatedTrip = await response.json()
+      setTrip(updatedTrip)
+      setShowFinishModal(false)
+      setActualSpending('')
+    } catch (err) {
+      alert('Failed to finish trip: ' + err.message)
+    } finally {
+      setFinishLoading(false)
+    }
+  }
+
+  const handleDeleteTrip = async () => {
+    setDeleteLoading(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`http://localhost:8000/api/trips/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete trip')
+      }
+
+      // Redirect to trips list
+      window.location.href = '/trips'
+    } catch (err) {
+      alert('Failed to delete trip: ' + err.message)
+    } finally {
+      setDeleteLoading(false)
+      setShowDeleteModal(false)
     }
   }
 
@@ -275,6 +357,15 @@ const TripDetail = () => {
                           {s.activities.length} activities
                         </p>
                       )}
+                      {s.weather && (
+                        <div className="mt-3 text-left text-xs text-slate-700">
+                          <div className="font-medium">Weather: {s.weather.forecast.condition}</div>
+                          <div className="text-[11px] text-slate-500">{s.weather.forecast.min_temp_c}°C - {s.weather.forecast.max_temp_c}°C • Wind {s.weather.forecast.max_wind_kph} kph</div>
+                          {s.weather.warning && s.weather.warnings && s.weather.warnings.length > 0 && (
+                            <div className="mt-1 text-red-600 font-semibold">Warning: {s.weather.warnings.join('; ')}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -350,6 +441,24 @@ const TripDetail = () => {
                   <Copy className="w-4 h-4" />
                   Duplicate Trip
                 </button>
+                {!trip.is_completed && (
+                  <button
+                    onClick={() => setShowFinishModal(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition text-sm font-semibold border border-green-100"
+                  >
+                    <DollarSign className="w-4 h-4" />
+                    Finish Trip
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition text-sm font-semibold border border-red-100"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete Trip
+                </button>
               </div>
 
               {shareError && (
@@ -394,6 +503,17 @@ const TripDetail = () => {
                         <Calendar className="w-3 h-3" />
                         {new Date(stop.arrival_date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}
                       </p>
+                      {stop.weather && (
+                        <div className="mt-2 flex items-center gap-3">
+                          <div className="text-xs text-slate-600">
+                            <div className="font-medium">{stop.weather.forecast.condition}</div>
+                            <div className="text-[11px]">{stop.weather.forecast.min_temp_c}°C · {stop.weather.forecast.max_temp_c}°C</div>
+                          </div>
+                          {stop.weather.warning && (
+                            <div className="text-xs text-red-600 font-semibold">⚠ {stop.weather.warnings.join('; ')}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -427,6 +547,82 @@ const TripDetail = () => {
           
         </div>
       </div>
+
+      {/* Finish Trip Modal */}
+      {showFinishModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+          >
+            <h3 className="text-xl font-bold text-slate-900 mb-4">Finish Trip</h3>
+            <p className="text-slate-600 mb-4">
+              Congratulations on completing your trip! Please enter your total actual spending to mark this trip as finished.
+            </p>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Total Actual Spending ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={actualSpending}
+                onChange={(e) => setActualSpending(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                placeholder="0.00"
+                min="0"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowFinishModal(false)}
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFinishTrip}
+                disabled={finishLoading}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-60"
+              >
+                {finishLoading ? 'Finishing...' : 'Finish Trip'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Delete Trip Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+          >
+            <h3 className="text-xl font-bold text-slate-900 mb-4">Delete Trip</h3>
+            <p className="text-slate-600 mb-4">
+              Are you sure you want to delete "{trip.title}"? This action cannot be undone and will permanently remove all trip data including stops, activities, budget, and notes.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteTrip}
+                disabled={deleteLoading}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-60"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete Trip'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

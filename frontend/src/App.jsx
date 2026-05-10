@@ -34,7 +34,7 @@ function App() {
 
   const fetchUserProfile = async (token) => {
     try {
-      const response = await fetch('http://localhost:8000/api/current-profile/', {
+      let response = await fetch('http://localhost:8000/api/current-profile/', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       if (response.status === 401) {

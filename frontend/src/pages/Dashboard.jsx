@@ -1,20 +1,35 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Calendar, DollarSign, MapPin, TrendingUp, Compass, Star } from 'lucide-react'
+import { Plus, Calendar, DollarSign, MapPin, TrendingUp, Compass, Star, Search, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 
 const Dashboard = () => {
   const [trips, setTrips] = useState([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({
-    totalTrips: 0,
-    totalBudget: 0,
-    upcomingTrips: 0
-  })
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [showAddToTripModal, setShowAddToTripModal] = useState(false)
+  const [selectedPlace, setSelectedPlace] = useState(null)
+  const [selectedTrip, setSelectedTrip] = useState(null)
 
   useEffect(() => {
     fetchTrips()
+    
+    // Set up polling to keep stats live
+    const interval = setInterval(fetchTrips, 30000) // Refresh every 30 seconds
+    
+    return () => clearInterval(interval)
   }, [])
+
+  // Calculate stats live from trips data
+  const stats = useMemo(() => ({
+    totalTrips: trips.length,
+    totalBudget: trips.reduce((sum, trip) => sum + parseFloat(trip.total_budget || 0), 0),
+    upcomingTrips: trips.filter(trip => new Date(trip.start_date) > new Date()).length,
+    completedTrips: trips.filter(trip => trip.is_completed).length,
+    totalActualSpending: trips.filter(trip => trip.is_completed).reduce((sum, trip) => sum + parseFloat(trip.actual_spending || 0), 0)
+  }), [trips])
 
   const fetchTrips = async () => {
     try {
@@ -25,18 +40,70 @@ const Dashboard = () => {
       if (response.ok) {
         const data = await response.json()
         setTrips(data.results || data || [])
-        
-        // Calculate stats
-        setStats({
-          totalTrips: data.length,
-          totalBudget: data.reduce((sum, trip) => sum + parseFloat(trip.total_budget || 0), 0),
-          upcomingTrips: data.filter(trip => new Date(trip.start_date) > new Date()).length
-        })
       }
     } catch (error) {
       console.error('Error fetching trips:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5`)
+      const data = await response.json()
+      setSearchResults(data.map(item => ({
+        name: item.display_name.split(',')[0],
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon),
+        fullName: item.display_name
+      })))
+    } catch (error) {
+      console.error('Search error:', error)
+    }
+  }
+
+  const addToTrip = async () => {
+    if (!selectedTrip || !selectedPlace) return
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`http://localhost:8000/api/trips/${selectedTrip.id}/stops/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          city_name: selectedPlace.name,
+          country: selectedPlace.fullName.split(',')[1]?.trim() || '',
+          latitude: selectedPlace.lat,
+          longitude: selectedPlace.lng,
+          arrival_date: new Date().toISOString().split('T')[0],
+          departure_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+          duration_days: 1,
+          cost_index: 'medium',
+          description: ''
+        })
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        // If backend returned weather warning, surface it to the user
+        if (data.weather && data.weather.warning) {
+          const msg = data.weather.warnings && data.weather.warnings.length > 0 ? data.weather.warnings.join('; ') : 'Potential bad weather at the chosen date.'
+          alert('Warning: ' + msg)
+        } else {
+          alert('Added to trip!')
+        }
+        setShowAddToTripModal(false)
+        setSelectedPlace(null)
+        setSelectedTrip(null)
+      } else {
+        const err = data.error || 'Error adding to trip'
+        alert(err)
+      }
+    } catch (error) {
+      console.error('Error:', error)
     }
   }
 
@@ -74,12 +141,62 @@ const Dashboard = () => {
         </Link>
       </motion.div>
 
+      {/* Place Search */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="premium-card rounded-xl p-6 mb-8"
+      >
+        <h2 className="text-xl font-bold text-slate-900 mb-4">Explore Places</h2>
+        <div className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search for cities or places..."
+            className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/80"
+            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+          />
+          <button onClick={handleSearch} className="brand-button px-4 py-2 rounded-lg">
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
+        {searchResults.length > 0 && (
+          <div className="h-96 rounded-xl overflow-hidden">
+            <MapContainer center={[searchResults[0].lat, searchResults[0].lng]} zoom={10} style={{ height: '100%', width: '100%' }}>
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              {searchResults.map((place, index) => (
+                <Marker key={index} position={[place.lat, place.lng]}>
+                  <Popup>
+                    <div className="text-center">
+                      <h3 className="font-bold">{place.name}</h3>
+                      <p className="text-sm text-gray-600 mb-2">{place.fullName}</p>
+                      <div className="flex flex-col gap-1">
+                        <Link to="/create-trip" state={{ initialLocation: place }} className="text-blue-600 text-sm hover:underline">Create Trip</Link>
+                        <button onClick={() => { setSelectedPlace(place); setShowAddToTripModal(true) }} className="text-green-600 text-sm hover:underline">Add to Trip</button>
+                        <a href={`https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`} target="_blank" rel="noopener noreferrer" className="text-purple-600 text-sm hover:underline flex items-center justify-center gap-1">
+                          <ExternalLink className="w-3 h-3" /> View in Maps
+                        </a>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+          </div>
+        )}
+      </motion.div>
+
       {/* Stats Cards */}
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="grid grid-cols-1 md:grid-cols-3 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
       >
         <motion.div variants={itemVariants} className="premium-card interactive-lift rounded-xl p-6">
           <div className="flex items-center justify-between">
@@ -104,10 +221,20 @@ const Dashboard = () => {
         <motion.div variants={itemVariants} className="premium-card interactive-lift rounded-xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-slate-600 text-sm font-medium">Upcoming</p>
-              <h3 className="text-3xl font-bold text-slate-900 mt-2">{stats.upcomingTrips}</h3>
+              <p className="text-slate-600 text-sm font-medium">Completed</p>
+              <h3 className="text-3xl font-bold text-slate-900 mt-2">{stats.completedTrips}</h3>
             </div>
-            <Calendar className="w-10 h-10 text-purple-500 opacity-20" />
+            <Star className="w-10 h-10 text-yellow-500 opacity-20" />
+          </div>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="premium-card interactive-lift rounded-xl p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-slate-600 text-sm font-medium">Actual Spending</p>
+              <h3 className="text-3xl font-bold text-slate-900 mt-2">${stats.totalActualSpending.toFixed(2)}</h3>
+            </div>
+            <TrendingUp className="w-10 h-10 text-indigo-500 opacity-20" />
           </div>
         </motion.div>
       </motion.div>
@@ -219,6 +346,27 @@ const Dashboard = () => {
           ))}
         </div>
       </motion.div>
+
+      {/* Add to Trip Modal */}
+      {showAddToTripModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold mb-4">Add {selectedPlace?.name} to Trip</h3>
+            <select 
+              value={selectedTrip?.id || ''} 
+              onChange={(e) => setSelectedTrip(trips.find(t => t.id === e.target.value))} 
+              className="w-full p-2 border border-slate-300 rounded-lg mb-4"
+            >
+              <option value="">Select a trip</option>
+              {trips.map(trip => <option key={trip.id} value={trip.id}>{trip.title}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={addToTrip} className="flex-1 brand-button py-2 rounded-lg">Add</button>
+              <button onClick={() => { setShowAddToTripModal(false); setSelectedPlace(null); setSelectedTrip(null) }} className="flex-1 bg-gray-300 py-2 rounded-lg">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
