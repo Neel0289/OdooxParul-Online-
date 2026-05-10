@@ -2,8 +2,15 @@ from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.views import APIView
+from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from django.db.models import Q
+import pyotp
+import qrcode
+import base64
+import io
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from .models import UserProfile, Trip, Stop, Activity, Budget, PackingItem, Note, TripShare
@@ -50,6 +57,43 @@ class UserRegistrationView(generics.CreateAPIView):
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
+@method_decorator(csrf_exempt, name='dispatch')
+class UserLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        two_factor_code = request.data.get('two_factor_code')
+
+        if not username or not password:
+            return Response({'error': 'Username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(request, username=username, password=password)
+        if not user:
+            return Response({'error': 'Invalid username or password'}, status=status.HTTP_401_UNAUTHORIZED)
+        # If user has 2FA enabled, require TOTP code
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        if profile.two_factor_enabled:
+            # If code not provided, tell client 2FA is required
+            if not two_factor_code:
+                return Response({'2fa_required': True}, status=status.HTTP_206_PARTIAL_CONTENT)
+
+            # Verify TOTP
+            if not profile.totp_secret:
+                return Response({'error': '2FA not properly configured'}, status=status.HTTP_400_BAD_REQUEST)
+
+            totp = pyotp.TOTP(profile.totp_secret)
+            if not totp.verify(two_factor_code, valid_window=1):
+                return Response({'error': 'Invalid two-factor code'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user': UserSerializer(user).data,
+        }, status=status.HTTP_200_OK)
+
+
 class UserProfileViewSet(viewsets.ModelViewSet):
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
@@ -58,7 +102,148 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return UserProfile.objects.filter(user=self.request.user)
 
     def get_object(self):
-        return UserProfile.objects.get(user=self.request.user)
+        profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
+        return profile
+    
+    def update(self, request, *args, **kwargs):
+        # Allow updating nested user fields and profile settings via PUT
+        profile = self.get_object()
+        user = profile.user
+
+        user_data = request.data.get('user', {})
+        if user_data:
+            user.first_name = user_data.get('first_name', user.first_name)
+            user.last_name = user_data.get('last_name', user.last_name)
+            email = user_data.get('email')
+            if email:
+                user.email = email
+            user.save()
+
+        # Profile fields
+        bio = request.data.get('bio')
+        if bio is not None:
+            profile.bio = bio
+
+        # Optional new settings
+        if 'two_factor_enabled' in request.data:
+            profile.two_factor_enabled = bool(request.data.get('two_factor_enabled'))
+        if 'profile_public' in request.data:
+            profile.profile_public = bool(request.data.get('profile_public'))
+        if 'show_email' in request.data:
+            profile.show_email = bool(request.data.get('show_email'))
+
+        profile.save()
+
+        return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['put'], url_path='', url_name='update_profile')
+    def update_profile(self, request, *args, **kwargs):
+        # Support PUT on the collection URL (/api/user-profile/) for current user's profile
+        return self.update(request, *args, **kwargs)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+
+        if not old_password or not new_password:
+            return Response({'error': 'old_password and new_password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(old_password):
+            return Response({'error': 'Old password is incorrect'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'detail': 'Password changed successfully'}, status=status.HTTP_200_OK)
+
+
+class CurrentProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+    def put(self, request, *args, **kwargs):
+        # Reuse logic from UserProfileViewSet.update
+            profile, _ = UserProfile.objects.get_or_create(user=request.user)
+            user = profile.user
+
+            user_data = request.data.get('user', {})
+            if user_data:
+                user.first_name = user_data.get('first_name', user.first_name)
+                user.last_name = user_data.get('last_name', user.last_name)
+                email = user_data.get('email')
+                if email:
+                    user.email = email
+                user.save()
+
+            # Handle file upload (multipart/form-data)
+            if hasattr(request, 'FILES') and request.FILES.get('profile_picture'):
+                profile.profile_picture = request.FILES.get('profile_picture')
+
+            bio = request.data.get('bio')
+            if bio is not None:
+                profile.bio = bio
+
+            if 'two_factor_enabled' in request.data:
+                profile.two_factor_enabled = bool(request.data.get('two_factor_enabled'))
+            if 'profile_public' in request.data:
+                profile.profile_public = bool(request.data.get('profile_public'))
+            if 'show_email' in request.data:
+                profile.show_email = bool(request.data.get('show_email'))
+
+            profile.save()
+            return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+
+class TwoFactorGenerateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+        # Generate a secret and save it temporarily
+        secret = pyotp.random_base32()
+        profile.totp_secret = secret
+        profile.save()
+
+        # Create provisioning URI
+        name = request.user.email or request.user.username
+        issuer = 'Traveloop'
+        otpauth = pyotp.totp.TOTP(secret).provisioning_uri(name=name, issuer_name=issuer)
+
+        # Generate QR PNG and return as data URI
+        qr = qrcode.make(otpauth)
+        buffered = io.BytesIO()
+        qr.save(buffered, format='PNG')
+        img_b64 = base64.b64encode(buffered.getvalue()).decode()
+        data_uri = f"data:image/png;base64,{img_b64}"
+
+        return Response({'otpauth_url': otpauth, 'qr_code': data_uri}, status=status.HTTP_200_OK)
+
+
+class TwoFactorVerifyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        code = request.data.get('code')
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+        if not profile.totp_secret:
+            return Response({'error': 'No TOTP secret present'}, status=status.HTTP_400_BAD_REQUEST)
+
+        totp = pyotp.TOTP(profile.totp_secret)
+        if totp.verify(code, valid_window=1):
+            profile.two_factor_enabled = True
+            profile.save()
+            return Response({'detail': 'Two-factor enabled'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Invalid code'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TripViewSet(viewsets.ModelViewSet):
@@ -187,12 +372,23 @@ class NoteViewSet(viewsets.ModelViewSet):
         serializer.save(trip_id=trip_id)
 
 
-class PublicTripView(generics.RetrieveAPIView):
-    queryset = TripShare.objects.all()
-    serializer_class = TripShareSerializer
+class PublicTripView(APIView):
     permission_classes = [AllowAny]
-    lookup_field = 'share_token'
 
-    def get_object(self):
-        share_token = self.kwargs.get('share_token')
-        return TripShare.objects.get(share_token=share_token)
+    def get(self, request, share_token, *args, **kwargs):
+        try:
+            share = TripShare.objects.select_related('trip').get(share_token=share_token)
+        except TripShare.DoesNotExist:
+            return Response({'error': 'Shared trip not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not share.is_public:
+            return Response({'error': 'This trip is not public'}, status=status.HTTP_403_FORBIDDEN)
+
+        return Response(
+            {
+                'share_token': share.share_token,
+                'trip': TripSerializer(share.trip).data,
+                'created_at': share.created_at,
+            },
+            status=status.HTTP_200_OK,
+        )

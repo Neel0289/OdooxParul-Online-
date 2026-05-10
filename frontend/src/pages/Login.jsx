@@ -8,6 +8,8 @@ const Login = ({ setAuth, setUser }) => {
   const [formData, setFormData] = useState({ username: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [show2FA, setShow2FA] = useState(false)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -18,21 +20,62 @@ const Login = ({ setAuth, setUser }) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-
     try {
-      const response = await fetch('http://localhost:8000/api-auth/login/', {
+      const payload = { username: formData.username, password: formData.password }
+      // include 2FA code when present
+      if (twoFactorCode) payload.two_factor_code = twoFactorCode
+
+      const response = await fetch('http://localhost:8000/api/login/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       })
 
-      if (response.ok) {
-        const data = await response.json()
+      const data = await response.json().catch(() => ({}))
+
+      // If server indicates 2FA is required, show code input
+      if (response.status === 206 || data['2fa_required']) {
+        setShow2FA(true)
+        setError('Two-factor authentication required. Enter the code from your authenticator.')
+        setLoading(false)
+        return
+      }
+
+      if (response.ok && data.token) {
         localStorage.setItem('authToken', data.token)
+        if (setUser && data.user) setUser({ user: data.user })
         setAuth(true)
         navigate('/dashboard')
       } else {
-        setError('Invalid username or password')
+        let message = data.error || 'Invalid username or password'
+        setError(message)
+      }
+    } catch (err) {
+      setError('An error occurred. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handle2FASubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      const payload = { username: formData.username, password: formData.password, two_factor_code: twoFactorCode }
+      const response = await fetch('http://localhost:8000/api/login/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok && data.token) {
+        localStorage.setItem('authToken', data.token)
+        if (setUser && data.user) setUser({ user: data.user })
+        setAuth(true)
+        navigate('/dashboard')
+      } else {
+        setError(data.error || 'Invalid two-factor code')
       }
     } catch (err) {
       setError('An error occurred. Please try again.')
@@ -115,6 +158,16 @@ const Login = ({ setAuth, setUser }) => {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
+
+          {show2FA && (
+            <form onSubmit={handle2FASubmit} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">2FA Code</label>
+                <input type="text" name="twoFactorCode" value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="Enter code from authenticator" className="w-full px-4 py-2 border rounded-lg" />
+              </div>
+              <button disabled={loading} className="w-full px-4 py-2 bg-blue-600 text-white rounded-xl">Verify & Sign in</button>
+            </form>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-slate-600">

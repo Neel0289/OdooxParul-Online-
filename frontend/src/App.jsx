@@ -14,6 +14,7 @@ import BudgetTracker from './pages/BudgetTracker'
 import PackingChecklist from './pages/PackingChecklist'
 import Notes from './pages/Notes'
 import Profile from './pages/Profile'
+import PublicTrip from './pages/PublicTrip'
 import './App.css'
 
 function App() {
@@ -33,11 +34,16 @@ function App() {
 
   const fetchUserProfile = async (token) => {
     try {
-      const response = await fetch('http://localhost:8000/api/user-profile/', {
+      const response = await fetch('http://localhost:8000/api/current-profile/', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
+      if (response.status === 401) {
+        response = await fetch('http://localhost:8000/api/current-profile/', {
+          headers: { 'Authorization': `Token ${token}` }
+        })
+      }
       if (response.ok) {
-        const data = await response.json()
+        let data = await response.json()
         setUser(data)
       }
     } catch (error) {
@@ -45,15 +51,22 @@ function App() {
     }
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('authToken')
+    setIsAuthenticated(false)
+    setUser(null)
+  }
+
   return (
     <Router>
       <div className="app-shell flex h-screen">
-        {isAuthenticated && <Sidebar open={sidebarOpen} />}
+        {isAuthenticated && <Sidebar open={sidebarOpen} onLogout={handleLogout} />}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {isAuthenticated && <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} user={user} />}
+          {isAuthenticated && <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} user={user} onLogout={handleLogout} />}
           <main className="flex-1 overflow-auto">
             <Routes>
               <Route path="/" element={isAuthenticated ? <Dashboard /> : <Home />} />
+              <Route path="/shared/:shareToken" element={<PublicTrip />} />
               <Route path="/login" element={!isAuthenticated ? <Login setAuth={setIsAuthenticated} setUser={setUser} /> : <Navigate to="/" />} />
               <Route path="/signup" element={!isAuthenticated ? <Signup setAuth={setIsAuthenticated} /> : <Navigate to="/" />} />
               <Route path="/dashboard" element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} />
@@ -67,7 +80,7 @@ function App() {
               <Route path="/trip/:id/packing" element={isAuthenticated ? <PackingChecklist /> : <Navigate to="/login" />} />
               <Route path="/notes" element={isAuthenticated ? <Notes /> : <Navigate to="/login" />} />
               <Route path="/trip/:id/notes" element={isAuthenticated ? <Notes /> : <Navigate to="/login" />} />
-              <Route path="/profile" element={isAuthenticated ? <Profile /> : <Navigate to="/login" />} />
+              <Route path="/profile" element={isAuthenticated ? <Profile onLogout={handleLogout} /> : <Navigate to="/login" />} />
             </Routes>
           </main>
         </div>

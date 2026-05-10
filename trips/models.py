@@ -7,6 +7,12 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     bio = models.TextField(blank=True, default='')
+    # New account settings
+    two_factor_enabled = models.BooleanField(default=False)
+    profile_public = models.BooleanField(default=True)
+    show_email = models.BooleanField(default=True)
+    # TOTP secret for authenticator apps (stored encrypted in prod)
+    totp_secret = models.CharField(max_length=64, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -40,8 +46,11 @@ class Stop(models.Model):
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     arrival_date = models.DateField()
+    arrival_time = models.TimeField(null=True, blank=True)
     departure_date = models.DateField()
+    departure_time = models.TimeField(null=True, blank=True)
     duration_days = models.PositiveIntegerField()
+    estimated_budget = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     cost_index = models.CharField(max_length=20, choices=[
         ('low', 'Low'),
         ('medium', 'Medium'),
@@ -114,6 +123,10 @@ class PackingItem(models.Model):
         ('electronics', 'Electronics'),
         ('toiletries', 'Toiletries'),
         ('medications', 'Medications'),
+        ('food', 'Food/Snacks'),
+        ('gear', 'Gear/Equipment'),
+        ('entertainment', 'Entertainment'),
+        ('gifts', 'Gifts/Souvenirs'),
         ('other', 'Other'),
     ]
 
@@ -121,6 +134,10 @@ class PackingItem(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='packing_items')
     item_name = models.CharField(max_length=255)
     category = models.CharField(max_length=50, choices=CATEGORIES, default='other')
+    description = models.TextField(blank=True, default='')
+    quantity = models.PositiveIntegerField(default=1)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    photo = models.ImageField(upload_to='packing_items/', null=True, blank=True)
     is_packed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

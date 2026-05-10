@@ -43,8 +43,48 @@ const BudgetTracker = () => {
 	}, [id, trips])
 
 	const allBudgets = useMemo(() => {
-		if (selectedTrip) return selectedTrip.budgets || []
-		return trips.flatMap((trip) => (trip.budgets || []).map((budget) => ({ ...budget, tripTitle: trip.title, tripId: trip.id })))
+		const processTripBudgets = (trip) => {
+			const tripBudgets = (trip.budgets || []).map(b => ({ ...b, tripTitle: trip.title, tripId: trip.id }))
+			
+			const stopBudgets = (trip.stops || [])
+				.filter(s => Number(s.estimated_budget) > 0)
+				.map(s => ({
+					id: `stop-${s.id}`,
+					category: `Stop: ${s.city_name}`,
+					estimated_cost: s.estimated_budget,
+					actual_cost: 0,
+					tripTitle: trip.title,
+					tripId: trip.id
+				}))
+
+			const packingBudgets = (trip.packing_items || [])
+				.filter(p => Number(p.price) > 0)
+				.map(p => ({
+					id: `packing-${p.id}`,
+					category: `Item: ${p.item_name}`,
+					estimated_cost: Number(p.price) * Number(p.quantity || 1),
+					actual_cost: p.is_packed ? (Number(p.price) * Number(p.quantity || 1)) : 0,
+					tripTitle: trip.title,
+					tripId: trip.id
+				}))
+
+			const activityBudgets = (trip.stops || [])
+				.flatMap(s => (s.activities || []).map(a => ({ ...a, cityName: s.city_name })))
+				.filter(a => Number(a.cost) > 0)
+				.map(a => ({
+					id: `activity-${a.id || Math.random()}`,
+					category: `Activity: ${a.title} (${a.cityName})`,
+					estimated_cost: Number(a.cost),
+					actual_cost: 0,
+					tripTitle: trip.title,
+					tripId: trip.id
+				}))
+
+			return [...tripBudgets, ...stopBudgets, ...packingBudgets, ...activityBudgets]
+		}
+
+		if (selectedTrip) return processTripBudgets(selectedTrip)
+		return trips.flatMap(trip => processTripBudgets(trip))
 	}, [selectedTrip, trips])
 
 	const totals = useMemo(() => {

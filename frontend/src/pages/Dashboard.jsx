@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Calendar, DollarSign, MapPin, TrendingUp } from 'lucide-react'
+import { Plus, Calendar, DollarSign, MapPin, TrendingUp, Compass, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 const Dashboard = () => {
@@ -70,7 +70,7 @@ const Dashboard = () => {
           className="flex items-center gap-2 brand-button px-6 py-3 rounded-xl font-medium transition"
         >
           <Plus className="w-5 h-5" />
-          New Trip
+          Plan New Trip
         </Link>
       </motion.div>
 
@@ -168,6 +168,56 @@ const Dashboard = () => {
             ))}
           </div>
         )}
+      </motion.div>
+      {/* Recommended Destinations */}
+      <motion.div
+        variants={itemVariants}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+        className="space-y-4 mt-12"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-purple-500/10 rounded-lg">
+            <Compass className="w-6 h-6 text-purple-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900">Recommended Destinations</h2>
+        </div>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { id: 1, name: 'Paris, France', image: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?auto=format&fit=crop&w=800&q=80', description: 'City of Light', rating: 4.9 },
+            { id: 2, name: 'Tokyo, Japan', image: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&q=80&w=800', description: 'Modern Meets Tradition', rating: 4.8 },
+            { id: 3, name: 'Santorini, Greece', image: 'https://images.unsplash.com/photo-1613395877344-13d4a8e0d49e?auto=format&fit=crop&q=80&w=800', description: 'Breathtaking Views', rating: 4.9 },
+            { id: 4, name: 'Bali, Indonesia', image: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&q=80&w=800', description: 'Tropical Paradise', rating: 4.7 },
+          ].map((dest) => (
+            <motion.div
+              key={dest.id}
+              whileHover={{ y: -5 }}
+              className="premium-card rounded-2xl overflow-hidden group cursor-pointer"
+            >
+              <div className="h-48 relative overflow-hidden">
+                <img 
+                  src={dest.image} 
+                  alt={dest.name} 
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80" />
+                <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1 text-white text-sm font-medium border border-white/20">
+                  <Star className="w-3 h-3 fill-current text-yellow-400" />
+                  {dest.rating}
+                </div>
+              </div>
+              <div className="p-5">
+                <h3 className="text-lg font-bold text-slate-900 group-hover:text-purple-600 transition-colors">{dest.name}</h3>
+                <p className="text-slate-500 text-sm mt-1">{dest.description}</p>
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dest.name)}`} target="_blank" rel="noopener noreferrer" className="mt-4 w-full py-2 bg-slate-50 hover:bg-purple-50 text-purple-600 font-medium rounded-xl text-sm transition-colors border border-slate-100 hover:border-purple-200 block text-center">
+                  Explore
+                </a>
+              </div>
+            </motion.div>
+          ))}
+        </div>
       </motion.div>
     </div>
   )

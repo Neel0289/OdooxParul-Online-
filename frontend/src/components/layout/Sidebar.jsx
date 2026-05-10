@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutGrid, MapPin, Plus, BarChart3, CheckSquare, FileText, User, LogOut } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-const Sidebar = ({ open }) => {
+const Sidebar = ({ open, onLogout }) => {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -18,7 +18,11 @@ const Sidebar = ({ open }) => {
   ]
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken')
+    if (onLogout) {
+      onLogout()
+    } else {
+      localStorage.removeItem('authToken')
+    }
     navigate('/login')
   }
 

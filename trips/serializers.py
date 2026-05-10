@@ -14,7 +14,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = ['user', 'profile_picture', 'bio', 'created_at', 'updated_at']
+        # Do NOT expose totp_secret in public serializer
+        fields = ['user', 'profile_picture', 'bio', 'two_factor_enabled', 'profile_public', 'show_email', 'created_at', 'updated_at']
 
 
 class ActivitySerializer(serializers.ModelSerializer):
@@ -24,11 +25,34 @@ class ActivitySerializer(serializers.ModelSerializer):
 
 
 class StopSerializer(serializers.ModelSerializer):
-    activities = ActivitySerializer(many=True, read_only=True)
+    activities = ActivitySerializer(many=True, required=False)
 
     class Meta:
         model = Stop
-        fields = ['id', 'trip', 'city_name', 'country', 'latitude', 'longitude', 'arrival_date', 'departure_date', 'duration_days', 'cost_index', 'description', 'order', 'activities', 'created_at']
+        fields = ['id', 'trip', 'city_name', 'country', 'latitude', 'longitude', 'arrival_date', 'arrival_time', 'departure_date', 'departure_time', 'duration_days', 'estimated_budget', 'cost_index', 'description', 'order', 'activities', 'created_at']
+        read_only_fields = ['trip']
+
+    def create(self, validated_data):
+        activities_data = validated_data.pop('activities', [])
+        stop = Stop.objects.create(**validated_data)
+        for act_data in activities_data:
+            Activity.objects.create(stop=stop, **act_data)
+        return stop
+
+    def update(self, instance, validated_data):
+        activities_data = validated_data.pop('activities', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if activities_data is not None:
+            # Simple approach: clear and recreate
+            instance.activities.all().delete()
+            for act_data in activities_data:
+                Activity.objects.create(stop=instance, **act_data)
+                
+        return instance
 
 
 class BudgetSerializer(serializers.ModelSerializer):
@@ -40,7 +64,8 @@ class BudgetSerializer(serializers.ModelSerializer):
 class PackingItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PackingItem
-        fields = ['id', 'trip', 'item_name', 'category', 'is_packed', 'created_at']
+        fields = ['id', 'trip', 'item_name', 'category', 'description', 'quantity', 'price', 'photo', 'is_packed', 'created_at']
+        read_only_fields = ['trip']
 
 
 class NoteSerializer(serializers.ModelSerializer):
