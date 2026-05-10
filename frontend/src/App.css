@@ -1,0 +1,19 @@
+.route-fade-enter {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.route-fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.route-fade-exit {
+  opacity: 1;
+}
+
+.route-fade-exit-active {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}

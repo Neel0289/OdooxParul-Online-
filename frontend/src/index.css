@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: #0b63f6;
+  --accent-2: #12b3a8;
+  --accent-warm: #f59e0b;
+  --surface: #f4f7fb;
+  --ink: #0f172a;
+  --muted: #5f6b82;
+  --success: #1f9d68;
+  --warning: #d97706;
+  --error: #dc2626;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: radial-gradient(circle at 20% -10%, #d9ecff 0%, transparent 45%), radial-gradient(circle at 85% 0%, #d9fff5 0%, transparent 38%), linear-gradient(160deg, #f7f9fd 0%, #eef3f9 100%);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+}
+
+/* Glassmorphism effect */
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.72) 100%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.glass-dark {
+  background: rgba(30, 30, 46, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.app-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.app-shell::before,
+.app-shell::after {
+  content: '';
+  position: fixed;
+  width: 32rem;
+  height: 32rem;
+  border-radius: 999px;
+  filter: blur(70px);
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.app-shell::before {
+  top: -9rem;
+  left: -7rem;
+  background: radial-gradient(circle, rgba(11, 99, 246, 0.35) 0%, rgba(11, 99, 246, 0) 70%);
+  animation: drift 14s ease-in-out infinite;
+}
+
+.app-shell::after {
+  bottom: -10rem;
+  right: -8rem;
+  background: radial-gradient(circle, rgba(18, 179, 168, 0.28) 0%, rgba(18, 179, 168, 0) 70%);
+  animation: drift 18s ease-in-out infinite reverse;
+}
+
+.page-shell {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: clamp(1.8rem, 2.8vw, 2.8rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: #0b132b;
+}
+
+.page-subtitle {
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+.premium-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.78));
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.interactive-lift {
+  transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+
+.interactive-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 40px rgba(11, 99, 246, 0.16);
+  border-color: rgba(11, 99, 246, 0.35);
+}
+
+.brand-button {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border: 0;
+  box-shadow: 0 10px 20px rgba(11, 99, 246, 0.26);
+}
+
+.brand-button:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 14px 30px rgba(11, 99, 246, 0.32);
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateY(0) translateX(0);
+  }
+  50% {
+    transform: translateY(-18px) translateX(14px);
+  }
+}
+
+@media (max-width: 768px) {
+  .page-shell {
+    padding: 1rem;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 102, 255, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 102, 255, 0.6);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: #eef2ff;
+}

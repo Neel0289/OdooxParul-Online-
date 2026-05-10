@@ -1,0 +1,37 @@
+# -----------------------------------------------------------------------------
+# Traveloop dependency inventory
+#
+# Installable backend requirements (Python / Django):
+#   pip install -r requirements.txt
+# -----------------------------------------------------------------------------
+
+Django==4.2.29
+djangorestframework==3.15.2
+django-cors-headers==4.4.0
+Pillow==10.4.0
+
+# Django runtime dependencies (explicitly pinned for reproducibility)
+asgiref==3.8.1
+sqlparse==0.5.1
+tzdata==2024.2
+
+# -----------------------------------------------------------------------------
+# Frontend stack used in this project (managed with npm, not pip)
+# File: frontend/package.json
+# -----------------------------------------------------------------------------
+react==19.2.5
+react-dom==19.2.5
+react-router-dom==7.15.0
+framer-motion==12.38.0
+tailwindcss==3.4.19
+postcss==8.5.14
+autoprefixer==10.5.0
+lucide-react==1.14.0
+leaflet==1.9.4
+react-leaflet==5.0.0
+recharts==3.8.1
+vite==8.0.10
+@vitejs/plugin-react==6.0.1
+eslint==10.2.1
+eslint-plugin-react-hooks==7.1.1
+eslint-plugin-react-refresh==0.5.2
