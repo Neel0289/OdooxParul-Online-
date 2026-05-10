@@ -11,6 +11,7 @@ django-cors-headers==4.4.0
 pyotp
 qrcode
 Pillow==10.4.0
+python-dotenv==1.1.1
 
 # Django runtime dependencies (explicitly pinned for reproducibility)
 asgiref==3.8.1

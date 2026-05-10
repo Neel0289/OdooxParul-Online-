@@ -72,6 +72,7 @@ class NoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Note
         fields = ['id', 'trip', 'stop', 'content', 'timestamp', 'created_at', 'updated_at']
+        read_only_fields = ['trip']
 
 
 class TripShareSerializer(serializers.ModelSerializer):
@@ -90,4 +91,4 @@ class TripSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trip
-        fields = ['id', 'user', 'title', 'description', 'start_date', 'end_date', 'cover_photo', 'total_budget', 'is_public', 'stops', 'budgets', 'packing_items', 'notes', 'shares', 'created_at', 'updated_at']
+        fields = ['id', 'user', 'title', 'description', 'start_date', 'end_date', 'cover_photo', 'total_budget', 'actual_spending', 'is_completed', 'is_public', 'stops', 'budgets', 'packing_items', 'notes', 'shares', 'created_at', 'updated_at']

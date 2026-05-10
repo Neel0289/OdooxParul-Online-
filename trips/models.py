@@ -28,6 +28,8 @@ class Trip(models.Model):
     end_date = models.DateField()
     cover_photo = models.ImageField(upload_to='trip_covers/', null=True, blank=True)
     total_budget = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    actual_spending = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    is_completed = models.BooleanField(default=False)
     is_public = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

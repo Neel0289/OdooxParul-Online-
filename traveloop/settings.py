@@ -11,9 +11,14 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env at project root when present
+load_dotenv(os.fspath(BASE_DIR / '.env'))
 
 
 # Quick-start development settings - unsuitable for production
@@ -158,3 +163,6 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Allow all hosts in development
 ALLOWED_HOSTS = ['*']
+
+# WeatherAPI key (set in .env or environment)
+WEATHERAPI_KEY = os.getenv('WEATHERAPI_KEY')
